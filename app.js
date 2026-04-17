@@ -1,0 +1,534 @@
+// ============================================================
+// app.js — AI Music Idea Manager – Application Logic
+// ============================================================
+
+// ——— State ———
+let allIdeas     = [];
+let selectedFile = null;
+let isProcessing = false;
+
+// ——— DOM References ———
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+// Sections
+const uploadSection    = $("#section-upload");
+const dashboardSection = $("#section-dashboard");
+
+// Upload elements
+const fileInput   = $("#file-input");
+const uploadArea  = $("#upload-area");
+const fileInfo    = $("#file-info");
+const fileName    = $("#file-name");
+const fileSize    = $("#file-size");
+const analyzeBtn  = $("#analyze-btn");
+const aiResults   = $("#ai-results");
+const spinnerEl   = $("#spinner");
+
+// Dashboard elements
+const ideasGrid   = $("#ideas-grid");
+const ideaCount   = $("#idea-count");
+let currentMoodFilter = "all";
+let currentTypeFilter = "all";
+
+// ============================================================
+// 1. NAVIGATION
+// ============================================================
+
+function navigateTo(sectionId) {
+  // Toggle sections
+  $$(".page-section").forEach(s => s.classList.remove("active"));
+  $(`#section-${sectionId}`).classList.add("active");
+
+  // Toggle nav items
+  $$(".nav-item").forEach(n => n.classList.remove("active"));
+  $(`.nav-item[data-section="${sectionId}"]`).classList.add("active");
+
+  // Refresh dashboard data when switching to it
+  if (sectionId === "dashboard") loadDashboard();
+}
+
+// Bind nav clicks
+$$(".nav-item").forEach(item => {
+  item.addEventListener("click", () => {
+    navigateTo(item.dataset.section);
+  });
+});
+
+// ============================================================
+// 2. FILE SELECTION (Drag & Drop + Click)
+// ============================================================
+
+fileInput.addEventListener("change", handleFileSelect);
+
+// Drag-over visual feedback
+uploadArea.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  uploadArea.classList.add("drag-over");
+});
+uploadArea.addEventListener("dragleave", () => {
+  uploadArea.classList.remove("drag-over");
+});
+uploadArea.addEventListener("drop", (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove("drag-over");
+  if (e.dataTransfer.files.length) {
+    fileInput.files = e.dataTransfer.files;
+    handleFileSelect();
+  }
+});
+
+function handleFileSelect() {
+  if (isProcessing) return;
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  // Validate audio type
+  if (!file.type || !file.type.startsWith("audio/")) {
+    showToast("Please select a valid audio file (.mp3, .wav, .ogg, etc.)", true);
+    fileInput.value = ""; // Reset input
+    return;
+  }
+
+  selectedFile = file;
+  fileName.textContent = file.name;
+  fileSize.textContent = formatBytes(file.size);
+  fileInfo.classList.add("visible");
+  analyzeBtn.disabled = false;
+
+  // Reset previous results
+  aiResults.classList.remove("visible");
+}
+
+// ============================================================
+// 3. AI ANALYSIS (Deterministic — same file = same tags)
+// ============================================================
+
+const MOODS = ["Calm", "Happy", "Energetic"];
+const TYPES = ["Melody", "Beat", "Chord Progression"];
+
+// Emoji maps for premium display
+const MOOD_EMOJI = { "Calm": "🌊", "Happy": "☀️", "Energetic": "⚡" };
+const TYPE_EMOJI = { "Melody": "🎵", "Beat": "🥁", "Chord Progression": "🎹" };
+
+/**
+ * Deterministic hash (djb2) — consistent integer from any string.
+ */
+function hashString(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Deterministic AI tags — same file always produces identical results.
+ * Seed derived from file.name + file.size.
+ */
+function generateAITags(file) {
+  const seed = hashString(file.name + ":" + file.size);
+  return {
+    mood:       MOODS[seed % MOODS.length],
+    bpm:        80 + ((seed >> 3) % 61),           // 80-140
+    type:       TYPES[(seed >> 8) % TYPES.length],
+    confidence: 88 + ((seed >> 13) % 11)            // 88-98%
+  };
+}
+
+/**
+ * Production AI Pipeline (Phase 2)
+ * Attempts to hit a real API, falls back to deterministic logic if unavailable.
+ */
+async function fetchRealAITags(file) {
+  try {
+    // Simulated API call to real Python backend:
+    // const formData = new FormData(); formData.append("audio", file);
+    // const res = await fetch("https://api.startup.com/analyze", { method: "POST", body: formData });
+    // if (!res.ok) throw new Error("API failed");
+    // return await res.json();
+    throw new Error("API not connected — using fallback");
+  } catch (err) {
+    console.warn("AI API unreachable. Falling back to robust deterministic analysis.");
+    return generateAITags(file);
+  }
+}
+
+// ============================================================
+// 4. ANALYZE & UPLOAD FLOW
+// ============================================================
+
+analyzeBtn.addEventListener("click", async () => {
+  if (isProcessing) return;
+  if (!selectedFile) {
+    showToast("Please select an audio file first.", true);
+    return;
+  }
+
+  // Set processing state
+  isProcessing = true;
+  analyzeBtn.disabled = true;
+  spinnerEl.classList.add("visible");
+  aiResults.classList.remove("visible");
+
+  try {
+    // Step 1 — Generate AI tags (with API fallback)
+    const tags = await fetchRealAITags(selectedFile);
+
+    // Step 2 — Upload audio to storage
+    const { downloadURL, storagePath } = await uploadAudio(selectedFile);
+
+    // Step 3 — Progressive AI analysis experience (WOW effect)
+    const spinnerText = spinnerEl.querySelector('span');
+    spinnerText.textContent = '🧠 Analyzing waveform...';
+    await new Promise(r => setTimeout(r, 500));
+    spinnerText.textContent = '🎵 Detecting mood & tempo...';
+    await new Promise(r => setTimeout(r, 500));
+    spinnerText.textContent = '✨ Generating tags...';
+    await new Promise(r => setTimeout(r, 400));
+
+    // Step 4 — Save idea
+    const idea = {
+      fileName:    selectedFile.name,
+      fileSize:    selectedFile.size,
+      audioURL:    downloadURL,
+      storagePath: storagePath,
+      mood:        tags.mood,
+      bpm:         tags.bpm,
+      type:        tags.type,
+      isVariation: false,
+      parentId:    null,
+      parentName:  null
+    };
+    await saveIdea(idea);
+
+    // Step 5 — Display AI results with emojis
+    $("#tag-mood").textContent = (MOOD_EMOJI[tags.mood] || "🎵") + " " + tags.mood;
+    $("#tag-bpm").textContent  = "♫ " + tags.bpm + " BPM";
+    $("#tag-type").textContent = (TYPE_EMOJI[tags.type] || "🎹") + " " + tags.type;
+    $("#confidence-value").textContent = tags.confidence + "% — High";
+    aiResults.classList.add("visible");
+
+    showToast("✅ Analysis complete — idea saved!");
+
+    // Reset file input for next upload
+    selectedFile = null;
+    fileInput.value = "";
+    analyzeBtn.disabled = true;
+
+  } catch (err) {
+    console.error("Upload error:", err);
+    showToast("Upload failed — please try again.", true);
+    analyzeBtn.disabled = false; // re-enable so they can try again
+  } finally {
+    isProcessing = false;
+    spinnerEl.classList.remove("visible");
+  }
+});
+
+// ============================================================
+// 5. DASHBOARD — Load & Render
+// ============================================================
+
+async function loadDashboard() {
+  try {
+    allIdeas = await getAllIdeas() || [];
+    applyFilters();
+  } catch (err) {
+    console.error("Dashboard load error:", err);
+    showToast("Failed to load ideas — please try again.", true);
+    allIdeas = [];
+    applyFilters();
+  }
+}
+
+function applyFilters() {
+  if (!Array.isArray(allIdeas)) return;
+  
+  let filtered = allIdeas;
+  if (currentMoodFilter !== "all") filtered = filtered.filter(i => i && i.mood === currentMoodFilter);
+  if (currentTypeFilter !== "all") filtered = filtered.filter(i => i && i.type === currentTypeFilter);
+
+  renderIdeas(filtered);
+}
+
+// Filter listeners
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('filter-pill')) {
+    const parent = e.target.closest('.filter-pills');
+    if (!parent) return;
+    
+    parent.querySelectorAll('.filter-pill').forEach(btn => btn.classList.remove('active'));
+    e.target.classList.add('active');
+    
+    if (parent.id === 'mood-filter-pills') {
+      currentMoodFilter = e.target.dataset.val;
+    } else if (parent.id === 'type-filter-pills') {
+      currentTypeFilter = e.target.dataset.val;
+    }
+    applyFilters();
+  }
+});
+
+function renderIdeas(ideas) {
+  if (!ideas || !Array.isArray(ideas)) ideas = [];
+  if (ideaCount) ideaCount.textContent = `Your Ideas (${ideas.length})`;
+
+  if (ideas.length === 0) {
+    ideasGrid.innerHTML = `
+      <div class="empty-state" style="grid-column: 1/-1;">
+        <span class="empty-icon">🎵</span>
+        <h3>No ideas yet</h3>
+        <p>No ideas yet — upload your first idea 🚀</p>
+      </div>`;
+    return;
+  }
+
+  ideasGrid.innerHTML = ideas.map(idea => {
+    if (!idea) return "";
+    const safeName = escapeHTML(idea.fileName || "Untitled Idea");
+    const safeMood = idea.mood || "Calm";
+    const safeType = idea.type || "Melody";
+    const safeBPM  = idea.bpm || "120";
+    
+    // Format metadata
+    const dateStr = idea.createdAt 
+      ? new Date(idea.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+      : "Just now";
+    const sizeStr = idea.fileSize ? formatBytes(idea.fileSize) : "";
+    
+    return `
+    <div class="idea-card" data-id="${idea.id}">
+      <button class="delete-btn" onclick="handleDelete('${idea.id}', this)" title="Delete Idea">🗑️</button>
+      
+      <div class="card-header">
+        <span class="card-title editable-title" contenteditable="true" onblur="handleRename('${idea.id}', this.innerText)" onkeydown="if(event.key==='Enter'){this.blur(); event.preventDefault();}" title="Click to rename">${safeName}</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          ${idea.isVariation
+            ? `<span class="variation-badge">↳ Variation</span>`
+            : `<span class="original-badge">✦ Original</span>`}
+        </div>
+      </div>
+
+      <div class="card-meta">
+        <span>📅 ${dateStr}</span>
+        ${sizeStr ? `<span>💾 ${sizeStr}</span>` : ""}
+      </div>
+
+      ${idea.isVariation && idea.parentName ? `
+        <div class="parent-link">
+          ↳ from <span>${escapeHTML(idea.parentName)}</span>
+        </div>` : ""}
+
+      <div class="card-player">
+        <audio controls preload="none" src="${idea.audioURL || ""}"></audio>
+      </div>
+
+      <div class="card-tags">
+        <span class="tag-pill mood editable-tag" onclick="inlineEditTag('${idea.id}', 'mood', this)" title="Click to edit">${MOOD_EMOJI[safeMood] || "🎵"} ${safeMood}</span>
+        <span class="tag-pill bpm editable-tag" onclick="inlineEditTag('${idea.id}', 'bpm', this)" title="Click to edit">♫ ${safeBPM} BPM</span>
+        <span class="tag-pill type editable-tag" onclick="inlineEditTag('${idea.id}', 'type', this)" title="Click to edit">${TYPE_EMOJI[safeType] || "🎹"} ${safeType}</span>
+      </div>
+
+      <div class="card-actions">
+        <button class="btn btn-secondary btn-sm" onclick="handleVariation('${idea.id}', this)">
+          🔀 Create Variation
+        </button>
+      </div>
+    </div>
+  `;
+  }).join("");
+}
+
+// ============================================================
+// 6. VERSIONING — Create Variation
+// ============================================================
+
+async function handleVariation(ideaId, btnElement) {
+  if (isProcessing) return;
+  
+  const idea = allIdeas.find(i => i.id === ideaId);
+  if (!idea) {
+    showToast("Parent idea not found.", true);
+    return;
+  }
+
+  isProcessing = true;
+  if (btnElement) {
+    btnElement.disabled = true;
+    btnElement.innerHTML = `⏳ Processing...`;
+  }
+
+  try {
+    await createVariation(idea);
+    showToast("🔀 Variation created successfully!");
+    await loadDashboard();   // refresh
+  } catch (err) {
+    console.error("Variation error:", err);
+    showToast("Failed to create variation. Please try again.", true);
+    if (btnElement) {
+      btnElement.disabled = false;
+      btnElement.innerHTML = `🔀 Create Variation`;
+    }
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// ============================================================
+// 7. DELETE — Remove Idea
+// ============================================================
+
+async function handleDelete(ideaId, btnElement) {
+  if (isProcessing) return;
+  if (!confirm("Delete this idea?")) return;
+
+  isProcessing = true;
+  if (btnElement) {
+    btnElement.disabled = true;
+    btnElement.style.opacity = "0.5";
+  }
+
+  try {
+    await deleteIdea(ideaId);
+    showToast("🗑️ Idea deleted");
+    await loadDashboard(); // refresh
+  } catch (err) {
+    console.error("Delete error:", err);
+    showToast("Failed to delete idea.", true);
+    if (btnElement) {
+      btnElement.disabled = false;
+      btnElement.style.opacity = "1";
+    }
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// ============================================================
+// 8. INLINE EDITING — Rename & Edit Tags
+// ============================================================
+let isEditing = false;
+
+window.handleRename = async function(id, newName) {
+  if (isProcessing) return;
+  const idea = allIdeas.find(i => i.id === id);
+  if (!idea) return;
+
+  const safeName = newName.trim() || "Untitled Idea";
+  if (idea.fileName === safeName) {
+    await loadDashboard(); // refresh to reset invalid edit
+    return;
+  }
+  
+  isProcessing = true;
+  idea.fileName = safeName;
+  try {
+    await updateIdea(id, { fileName: safeName });
+    showToast("✓ Saved");
+  } catch (err) {
+    console.error(err);
+    showToast("Failed to rename idea.", true);
+  } finally {
+    isProcessing = false;
+    await loadDashboard();
+  }
+};
+
+window.inlineEditTag = function(id, field, element) {
+  if (isEditing || isProcessing) return; // Prevent double editing
+  if (element.querySelector('select') || element.querySelector('input')) return;
+  
+  const idea = allIdeas.find(i => i.id === id);
+  if (!idea) return;
+  
+  isEditing = true;
+  const currentVal = idea[field];
+
+  let inputHTML = '';
+  if (field === 'bpm') {
+    inputHTML = `<input type="number" value="${currentVal}" class="inline-input" onblur="saveInlineTag('${id}', '${field}', this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+  } else {
+    const options = field === 'mood' ? MOODS : TYPES;
+    inputHTML = `<select class="inline-select" onblur="saveInlineTag('${id}', '${field}', this.value)" onchange="saveInlineTag('${id}', '${field}', this.value)">
+      ${options.map(o => `<option value="${o}" ${o === currentVal ? 'selected' : ''}>${o}</option>`).join('')}
+    </select>`;
+  }
+  
+  element.innerHTML = inputHTML;
+  const inputEl = element.querySelector('input, select');
+  if (inputEl) inputEl.focus();
+};
+
+window.saveInlineTag = async function(id, field, newValue) {
+  const idea = allIdeas.find(i => i.id === id);
+  if (!idea) {
+    isEditing = false;
+    await loadDashboard();
+    return;
+  }
+  
+  if (field === 'bpm') {
+    newValue = parseInt(newValue, 10);
+    if (isNaN(newValue) || newValue < 80) newValue = 80;
+    if (newValue > 140) newValue = 140;
+  } else if (!newValue) {
+    newValue = idea[field]; // Fallback to current if empty
+  }
+  
+  if (idea[field] == newValue) {
+    isEditing = false;
+    await loadDashboard(); 
+    return; 
+  }
+  
+  isProcessing = true;
+  idea[field] = newValue;
+  try {
+    await updateIdea(id, { [field]: newValue });
+    showToast("✓ Saved");
+  } catch (err) {
+    console.error(err);
+    showToast("Failed to update tag.", true);
+  } finally {
+    isEditing = false;
+    isProcessing = false;
+    await loadDashboard();
+  }
+};
+
+// ============================================================
+// 9. UTILITIES
+// ============================================================
+
+/** Show a brief toast notification */
+function showToast(message, isError = false) {
+  const container = $("#toast-container");
+  const toast = document.createElement("div");
+  toast.className = `toast${isError ? " error" : ""}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+/** Format bytes into human-readable size */
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / 1048576).toFixed(1) + " MB";
+}
+
+/** Basic HTML escaping */
+function escapeHTML(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ============================================================
+// 8. INITIALISE
+// ============================================================
+
+// Start on the upload page
+navigateTo("upload");

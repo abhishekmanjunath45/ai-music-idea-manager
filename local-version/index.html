@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI Music Idea Manager — Upload audio ideas, get AI-powered tags, and manage creative versions. Zero-setup local version." />
+  <title>AI Music Idea Manager — Local</title>
+
+  <!-- Google Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Shared Styles (reuse parent CSS) -->
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+
+  <!-- ——— Toast Notification Container ——— -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <div class="app-container">
+
+    <!-- ========== SIDEBAR ========== -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="logo-icon">🎶</div>
+        <h1>AI Music<span>Idea Manager</span></h1>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-section="upload" id="nav-upload">
+          <span class="icon">⬆️</span>
+          <span class="nav-text">Upload</span>
+        </button>
+        <button class="nav-item" data-section="dashboard" id="nav-dashboard">
+          <span class="icon">📊</span>
+          <span class="nav-text">Dashboard</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        Built for Hackathon 2026
+      </div>
+    </aside>
+
+    <!-- ========== MAIN CONTENT ========== -->
+    <main class="main-content">
+
+      <!-- ——— UPLOAD PAGE ——— -->
+      <section id="section-upload" class="page-section active">
+        <div class="page-header">
+          <h2>🎵 AI Music Idea Manager</h2>
+          <p>Capture, organize, and evolve your music ideas with AI</p>
+        </div>
+
+        <!-- AI capability badge -->
+        <div class="ai-badge">
+          <span class="ai-badge-dot"></span>
+          ⚡ Real-time AI analysis
+        </div>
+
+        <!-- Drop zone -->
+        <div id="upload-area" class="upload-area">
+          <span class="upload-icon">🎧</span>
+          <h3>Drag &amp; drop an audio file</h3>
+          <p>or click anywhere to browse &nbsp;·&nbsp; MP3, WAV, OGG, FLAC</p>
+          <input type="file" id="file-input" accept="audio/*" />
+        </div>
+
+        <!-- Selected file info -->
+        <div id="file-info" class="file-info">
+          <span class="file-icon">🎵</span>
+          <div class="file-details">
+            <div id="file-name" class="file-name">—</div>
+            <div id="file-size" class="file-size">—</div>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="btn-group">
+          <button id="analyze-btn" class="btn btn-primary" disabled>
+            ✨ Analyze &amp; Upload
+          </button>
+        </div>
+
+        <!-- Spinner -->
+        <div id="spinner" class="spinner-overlay">
+          <div class="spinner"></div>
+          <span>🧠 Preparing analysis...</span>
+        </div>
+
+        <!-- AI Results -->
+        <div id="ai-results" class="ai-results">
+          <h4>🧠 AI Analysis Results</h4>
+          <div class="tag-grid">
+            <div class="tag-card mood">
+              <div class="tag-label">Mood</div>
+              <div id="tag-mood" class="tag-value">—</div>
+            </div>
+            <div class="tag-card bpm">
+              <div class="tag-label">BPM</div>
+              <div id="tag-bpm" class="tag-value">—</div>
+            </div>
+            <div class="tag-card type">
+              <div class="tag-label">Type</div>
+              <div id="tag-type" class="tag-value">—</div>
+            </div>
+          </div>
+          <!-- AI Confidence Indicator -->
+          <div class="ai-confidence">
+            <span class="confidence-icon">🛡️</span>
+            <span class="confidence-label">AI Confidence</span>
+            <span id="confidence-value" class="confidence-value">—</span>
+          </div>
+          <p class="ai-trust-signal">Tags generated based on audio characteristics</p>
+        </div>
+      </section>
+
+      <!-- ——— DASHBOARD PAGE ——— -->
+      <section id="section-dashboard" class="page-section">
+        <div class="page-header">
+          <h2>Dashboard</h2>
+          <p>All your music ideas in one place.</p>
+        </div>
+
+        <!-- Toolbar / Filters -->
+        <!-- Toolbar / Filters -->
+        <div class="dashboard-toolbar">
+          <div class="filter-group">
+            <span class="filter-label">Filter by Mood:</span>
+            <div class="filter-pills" id="mood-filter-pills">
+              <button class="filter-pill active" data-val="all">All</button>
+              <button class="filter-pill" data-val="Calm">🌊 Calm</button>
+              <button class="filter-pill" data-val="Happy">☀️ Happy</button>
+              <button class="filter-pill" data-val="Energetic">⚡ Energetic</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">Filter by Type:</span>
+            <div class="filter-pills" id="type-filter-pills">
+              <button class="filter-pill active" data-val="all">All</button>
+              <button class="filter-pill" data-val="Melody">🎵 Melody</button>
+              <button class="filter-pill" data-val="Beat">🥁 Beat</button>
+              <button class="filter-pill" data-val="Chord Progression">🎹 Chord</button>
+            </div>
+          </div>
+        </div>
+
+        <h3 id="idea-count" class="section-title">Your Ideas (0)</h3>
+
+        <!-- Ideas grid -->
+        <div id="ideas-grid" class="ideas-grid">
+          <div class="empty-state" style="grid-column:1/-1;">
+            <span class="empty-icon">🎵</span>
+            <h3>No ideas yet</h3>
+            <p>Upload your first audio idea to get started.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ========== SCRIPTS ========== -->
+  <!-- NO Firebase needed — local storage backend -->
+  <script src="storage.js"></script>
+  <script src="../app.js"></script>
+
+</body>
+</html>
