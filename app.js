@@ -132,9 +132,7 @@ function simulateAI() {
 // 4. ANALYZE & UPLOAD FLOW
 // ============================================================
 
-analyzeBtn.addEventListener("click", async () => {
-  if (isProcessing || !selectedFile) return;
-
+async function handleAnalyze(file) {
   try {
     isProcessing = true;
     analyzeBtn.disabled = true;
@@ -142,7 +140,7 @@ analyzeBtn.addEventListener("click", async () => {
     aiResults.classList.remove("visible");
 
     // 1. FILE HANDLING (DEPLOYMENT SAFE)
-    const audioURL = URL.createObjectURL(selectedFile);
+    const audioURL = URL.createObjectURL(file);
 
     // 2. Progressive UI + Safe Async
     const spinnerText = spinnerEl.querySelector('span');
@@ -150,13 +148,13 @@ analyzeBtn.addEventListener("click", async () => {
     await simulateAI();
 
     // 3. TAG GENERATION (SYNC ONLY)
-    const tags = generateTags(selectedFile);
+    const tags = generateTags(file);
 
     // 4. STORAGE SAFETY (Metadata ONLY)
     const idea = {
       id: Date.now().toString(),
-      fileName: selectedFile.name,
-      fileSize: selectedFile.size,
+      fileName: file.name,
+      fileSize: file.size,
       audioURL: audioURL, // Temporary URL
       mood: tags.mood,
       bpm: tags.bpm,
@@ -195,6 +193,15 @@ analyzeBtn.addEventListener("click", async () => {
     analyzeBtn.disabled = true;
     spinnerEl.classList.remove("visible");
   }
+}
+
+analyzeBtn.addEventListener("click", () => {
+  if (isProcessing) return;
+  if (!selectedFile) {
+    showToast("Please select an audio file first.", true);
+    return;
+  }
+  handleAnalyze(selectedFile);
 });
 
 // ============================================================
@@ -503,7 +510,88 @@ function escapeHTML(str) {
 }
 
 // ============================================================
-// 8. INITIALISE
+// 10. MICROPHONE RECORDING
+// ============================================================
+
+const recordBtn = $("#record-btn");
+const stopRecordBtn = $("#stop-record-btn");
+
+let mediaRecorder;
+let audioChunks = [];
+
+async function setupRecorder() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast("Recording not supported on this device", true);
+    return false;
+  }
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const file = new File([audioBlob], `Recording_${Date.now()}.webm`, { type: 'audio/webm' });
+      audioChunks = [];
+      
+      // Update UI
+      selectedFile = file;
+      fileName.textContent = file.name;
+      fileSize.textContent = formatBytes(file.size);
+      fileInfo.classList.add("visible");
+      
+      // Auto-process instantly
+      handleAnalyze(file);
+    };
+    
+    return true;
+  } catch (err) {
+    console.error(err);
+    showToast("Microphone access denied or not supported", true);
+    return false;
+  }
+}
+
+function startRecording() {
+  if (isProcessing) return;
+  audioChunks = [];
+  mediaRecorder.start();
+  
+  if (recordBtn) recordBtn.style.display = "none";
+  if (stopRecordBtn) stopRecordBtn.style.display = "inline-block";
+  uploadArea.classList.add("drag-over"); // Visual indicator
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+  
+  if (recordBtn) recordBtn.style.display = "inline-block";
+  if (stopRecordBtn) stopRecordBtn.style.display = "none";
+  uploadArea.classList.remove("drag-over");
+}
+
+if (recordBtn && stopRecordBtn) {
+  recordBtn.addEventListener("click", async () => {
+    if (!mediaRecorder) {
+      const ready = await setupRecorder();
+      if (!ready) return;
+    }
+    startRecording();
+  });
+
+  stopRecordBtn.addEventListener("click", () => {
+    stopRecording();
+  });
+}
+
+// ============================================================
+// 11. INITIALISE
 // ============================================================
 
 // Start on the upload page

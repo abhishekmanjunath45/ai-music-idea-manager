@@ -166,7 +166,7 @@ Built to never fail during demo:
 👉 Feels like a real product, not a prototype
 
 🌐 Live Demo
-👉 
+👉 https://cheerful-entremet-5297a9.netlify.app/
 
 📦 GitHub Repository
 👉 https://github.com/abhishekmanjunath45/ai-music-idea-manager
