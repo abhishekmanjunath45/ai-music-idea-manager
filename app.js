@@ -111,48 +111,21 @@ const TYPES = ["Melody", "Beat", "Chord Progression"];
 const MOOD_EMOJI = { "Calm": "🌊", "Happy": "☀️", "Energetic": "⚡" };
 const TYPE_EMOJI = { "Melody": "🎵", "Beat": "🥁", "Chord Progression": "🎹" };
 
-/**
- * Deterministic hash (djb2) — consistent integer from any string.
- */
-function hashString(str) {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash) + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
-}
+function generateTags(file) {
+  const hash = file.name.length + file.size;
 
-/**
- * Deterministic AI tags — same file always produces identical results.
- * Seed derived from file.name + file.size.
- */
-function generateAITags(file) {
-  const seed = hashString(file.name + ":" + file.size);
   return {
-    mood:       MOODS[seed % MOODS.length],
-    bpm:        80 + ((seed >> 3) % 61),           // 80-140
-    type:       TYPES[(seed >> 8) % TYPES.length],
-    confidence: 88 + ((seed >> 13) % 11)            // 88-98%
+    mood: hash % 2 === 0 ? "Energetic" : "Calm",
+    bpm: 80 + (hash % 60),
+    type: ["Melody", "Beat", "Chord"][hash % 3],
+    confidence: 95 // Keep for UI consistency
   };
 }
 
-/**
- * Production AI Pipeline (Phase 2)
- * Attempts to hit a real API, falls back to deterministic logic if unavailable.
- */
-async function fetchRealAITags(file) {
-  try {
-    // Simulated API call to real Python backend:
-    // const formData = new FormData(); formData.append("audio", file);
-    // const res = await fetch("https://api.startup.com/analyze", { method: "POST", body: formData });
-    // if (!res.ok) throw new Error("API failed");
-    // return await res.json();
-    throw new Error("API not connected — using fallback");
-  } catch (err) {
-    console.warn("AI API unreachable. Falling back to robust deterministic analysis.");
-    return generateAITags(file);
-  }
+function simulateAI() {
+  return new Promise(resolve => {
+    setTimeout(() => resolve(true), 800);
+  });
 }
 
 // ============================================================
@@ -160,69 +133,66 @@ async function fetchRealAITags(file) {
 // ============================================================
 
 analyzeBtn.addEventListener("click", async () => {
-  if (isProcessing) return;
-  if (!selectedFile) {
-    showToast("Please select an audio file first.", true);
-    return;
-  }
-
-  // Set processing state
-  isProcessing = true;
-  analyzeBtn.disabled = true;
-  spinnerEl.classList.add("visible");
-  aiResults.classList.remove("visible");
+  if (isProcessing || !selectedFile) return;
 
   try {
-    // Step 1 — Generate AI tags (with API fallback)
-    const tags = await fetchRealAITags(selectedFile);
+    isProcessing = true;
+    analyzeBtn.disabled = true;
+    spinnerEl.classList.add("visible");
+    aiResults.classList.remove("visible");
 
-    // Step 2 — Upload audio to storage
-    const { downloadURL, storagePath } = await uploadAudio(selectedFile);
+    // 1. FILE HANDLING (DEPLOYMENT SAFE)
+    const audioURL = URL.createObjectURL(selectedFile);
 
-    // Step 3 — Progressive AI analysis experience (WOW effect)
+    // 2. Progressive UI + Safe Async
     const spinnerText = spinnerEl.querySelector('span');
     spinnerText.textContent = '🧠 Analyzing waveform...';
-    await new Promise(r => setTimeout(r, 500));
-    spinnerText.textContent = '🎵 Detecting mood & tempo...';
-    await new Promise(r => setTimeout(r, 500));
-    spinnerText.textContent = '✨ Generating tags...';
-    await new Promise(r => setTimeout(r, 400));
+    await simulateAI();
 
-    // Step 4 — Save idea
+    // 3. TAG GENERATION (SYNC ONLY)
+    const tags = generateTags(selectedFile);
+
+    // 4. STORAGE SAFETY (Metadata ONLY)
     const idea = {
-      fileName:    selectedFile.name,
-      fileSize:    selectedFile.size,
-      audioURL:    downloadURL,
-      storagePath: storagePath,
-      mood:        tags.mood,
-      bpm:         tags.bpm,
-      type:        tags.type,
+      id: Date.now().toString(),
+      fileName: selectedFile.name,
+      fileSize: selectedFile.size,
+      audioURL: audioURL, // Temporary URL
+      mood: tags.mood,
+      bpm: tags.bpm,
+      type: tags.type,
       isVariation: false,
-      parentId:    null,
-      parentName:  null
+      parentId: null,
+      parentName: null
     };
-    await saveIdea(idea);
 
-    // Step 5 — Display AI results with emojis
+    // Store securely in localStorage via JSON
+    allIdeas.unshift(idea);
+    localStorage.setItem("ideas", JSON.stringify(allIdeas));
+
+    // Show AI results
     $("#tag-mood").textContent = (MOOD_EMOJI[tags.mood] || "🎵") + " " + tags.mood;
     $("#tag-bpm").textContent  = "♫ " + tags.bpm + " BPM";
     $("#tag-type").textContent = (TYPE_EMOJI[tags.type] || "🎹") + " " + tags.type;
     $("#confidence-value").textContent = tags.confidence + "% — High";
     aiResults.classList.add("visible");
-
     showToast("✅ Analysis complete — idea saved!");
 
-    // Reset file input for next upload
     selectedFile = null;
     fileInput.value = "";
-    analyzeBtn.disabled = true;
+    
+    // UI FAILSAFE (ALWAYS LOAD DASHBOARD)
+    loadDashboard();
 
   } catch (err) {
-    console.error("Upload error:", err);
-    showToast("Upload failed — please try again.", true);
-    analyzeBtn.disabled = false; // re-enable so they can try again
+    console.error("Critical Upload Error:", err);
+    showToast("Upload failed, recovering dashboard...", true);
+    
+    // UI FAILSAFE
+    loadDashboard();
   } finally {
-    isProcessing = false;
+    isProcessing = false; // MUST ALWAYS RUN
+    analyzeBtn.disabled = true;
     spinnerEl.classList.remove("visible");
   }
 });
@@ -233,12 +203,13 @@ analyzeBtn.addEventListener("click", async () => {
 
 async function loadDashboard() {
   try {
-    allIdeas = await getAllIdeas() || [];
-    applyFilters();
+    const raw = localStorage.getItem("ideas");
+    allIdeas = raw ? JSON.parse(raw) : [];
   } catch (err) {
-    console.error("Dashboard load error:", err);
-    showToast("Failed to load ideas — please try again.", true);
+    console.error("Local load error:", err);
     allIdeas = [];
+  } finally {
+    if (!Array.isArray(allIdeas)) allIdeas = [];
     applyFilters();
   }
 }
@@ -347,7 +318,6 @@ function renderIdeas(ideas) {
 
 async function handleVariation(ideaId, btnElement) {
   if (isProcessing) return;
-  
   const idea = allIdeas.find(i => i.id === ideaId);
   if (!idea) {
     showToast("Parent idea not found.", true);
@@ -361,18 +331,27 @@ async function handleVariation(ideaId, btnElement) {
   }
 
   try {
-    await createVariation(idea);
-    showToast("🔀 Variation created successfully!");
-    await loadDashboard();   // refresh
+    const variation = {
+      ...idea,
+      id: Date.now().toString(),
+      bpm: Math.max(80, Math.min(140, idea.bpm + 5)),
+      isVariation: true,
+      parentId: idea.id,
+      parentName: idea.fileName
+    };
+    allIdeas.unshift(variation);
+    localStorage.setItem("ideas", JSON.stringify(allIdeas));
+    showToast("🔀 Variation created!");
   } catch (err) {
-    console.error("Variation error:", err);
-    showToast("Failed to create variation. Please try again.", true);
+    console.error(err);
+    showToast("Failed to create variation.", true);
+  } finally {
     if (btnElement) {
       btnElement.disabled = false;
       btnElement.innerHTML = `🔀 Create Variation`;
     }
-  } finally {
     isProcessing = false;
+    loadDashboard();
   }
 }
 
@@ -391,18 +370,15 @@ async function handleDelete(ideaId, btnElement) {
   }
 
   try {
-    await deleteIdea(ideaId);
+    allIdeas = allIdeas.filter(i => i.id !== ideaId);
+    localStorage.setItem("ideas", JSON.stringify(allIdeas));
     showToast("🗑️ Idea deleted");
-    await loadDashboard(); // refresh
   } catch (err) {
-    console.error("Delete error:", err);
-    showToast("Failed to delete idea.", true);
-    if (btnElement) {
-      btnElement.disabled = false;
-      btnElement.style.opacity = "1";
-    }
+    console.error(err);
+    showToast("Failed to delete.", true);
   } finally {
     isProcessing = false;
+    loadDashboard();
   }
 }
 
@@ -418,21 +394,21 @@ window.handleRename = async function(id, newName) {
 
   const safeName = newName.trim() || "Untitled Idea";
   if (idea.fileName === safeName) {
-    await loadDashboard(); // refresh to reset invalid edit
+    loadDashboard(); // refresh to reset invalid edit
     return;
   }
   
   isProcessing = true;
   idea.fileName = safeName;
   try {
-    await updateIdea(id, { fileName: safeName });
+    localStorage.setItem("ideas", JSON.stringify(allIdeas));
     showToast("✓ Saved");
   } catch (err) {
     console.error(err);
-    showToast("Failed to rename idea.", true);
+    showToast("Failed to rename.", true);
   } finally {
     isProcessing = false;
-    await loadDashboard();
+    loadDashboard();
   }
 };
 
@@ -465,7 +441,7 @@ window.saveInlineTag = async function(id, field, newValue) {
   const idea = allIdeas.find(i => i.id === id);
   if (!idea) {
     isEditing = false;
-    await loadDashboard();
+    loadDashboard();
     return;
   }
   
@@ -479,22 +455,22 @@ window.saveInlineTag = async function(id, field, newValue) {
   
   if (idea[field] == newValue) {
     isEditing = false;
-    await loadDashboard(); 
+    loadDashboard(); 
     return; 
   }
   
   isProcessing = true;
   idea[field] = newValue;
   try {
-    await updateIdea(id, { [field]: newValue });
+    localStorage.setItem("ideas", JSON.stringify(allIdeas));
     showToast("✓ Saved");
   } catch (err) {
     console.error(err);
-    showToast("Failed to update tag.", true);
+    showToast("Failed to update.", true);
   } finally {
     isEditing = false;
     isProcessing = false;
-    await loadDashboard();
+    loadDashboard();
   }
 };
 

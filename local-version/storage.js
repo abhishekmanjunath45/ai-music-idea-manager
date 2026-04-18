@@ -46,7 +46,7 @@ function _uid() {
  * Returns { downloadURL, storagePath }.
  */
 async function uploadAudio(file) {
-  const url  = URL.createObjectURL(file);
+  const url = URL.createObjectURL(file);
   const path = `local/${file.name}`;
   return { downloadURL: url, storagePath: path };
 }
@@ -57,8 +57,8 @@ async function uploadAudio(file) {
  */
 async function saveIdea(idea) {
   const ideas = _loadFromStorage();
-  const id    = _uid();
-  const doc   = {
+  const id = _uid();
+  const doc = {
     ...idea,
     id,
     createdAt: new Date().toISOString()
@@ -89,14 +89,14 @@ async function getAllIdeas() {
  */
 async function createVariation(parentIdea) {
   const variation = {
-    fileName:    parentIdea.fileName,
-    audioURL:    parentIdea.audioURL,
+    fileName: parentIdea.fileName,
+    audioURL: parentIdea.audioURL,
     storagePath: parentIdea.storagePath,
-    mood:        parentIdea.mood,
-    bpm:         variationBPM(parentIdea.bpm),
-    type:        parentIdea.type,
-    parentId:    parentIdea.id,
-    parentName:  parentIdea.fileName,
+    mood: parentIdea.mood,
+    bpm: variationBPM(parentIdea.bpm),
+    type: parentIdea.type,
+    parentId: parentIdea.id,
+    parentName: parentIdea.fileName,
     isVariation: true
   };
   const id = await saveIdea(variation);
@@ -130,7 +130,7 @@ async function updateIdea(id, updates) {
   if (!id || !updates || typeof updates !== 'object') return;
   let ideas = _loadFromStorage();
   let updated = false;
-  
+
   ideas = ideas.map(idea => {
     if (idea.id === id) {
       updated = true;
@@ -138,6 +138,6 @@ async function updateIdea(id, updates) {
     }
     return idea;
   });
-  
+
   if (updated) _saveToStorage(ideas);
 }
